@@ -10,3 +10,5 @@ Image3 hw_1_3(const std::vector<std::string> &params);
 Image3 hw_1_4(const std::vector<std::string> &params);
 Image3 hw_1_5(const std::vector<std::string> &params);
 Image3 hw_1_6(const std::vector<std::string> &params);
+
+bool pointInShape(Vector2 q, std::vector<Vector2> polyline);
