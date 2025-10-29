@@ -261,7 +261,7 @@ Image3 hw_2_2(const std::vector<std::string> &params)
 
                         a++;
                     }
-                    
+
                     b++;
                 }
             }
@@ -391,10 +391,10 @@ Image3 hw_2_3(const std::vector<std::string> &params)
                                 largeImg((4 * x) + a, (4 * y) + b) = color;
                             }
                         }
-                        
+
                         a++;
                     }
-                    
+
                     b++;
                 }
             }
@@ -427,6 +427,16 @@ Image3 hw_2_4(const std::vector<std::string> &params)
     Image3 img(scene.camera.resolution.x,
                scene.camera.resolution.y);
 
+    auto aspectRatio = (double)img.width / (double)img.height;
+
+    Matrix4x4 P = Matrix4x4::identity();
+    P(2, 2) = 0;
+    P(3, 2) = -1;
+    P(3, 3) = 0;
+    P(3, 2) = 1;
+
+    Matrix4x4 V = inverse(scene.camera.cam_to_world);
+
     // foreach mesh
     for (int m = 0; m < (int)scene.meshes.size(); m++)
     {
@@ -445,21 +455,40 @@ Image3 hw_2_4(const std::vector<std::string> &params)
             Vector3 p1 = mesh.vertices[mesh.faces[i][1]];
             Vector3 p2 = mesh.vertices[mesh.faces[i][2]];
 
-            // Multiply by M then V then P to get cameraProj space            
+            // Multiply by M then V then P to get cameraProj space
+            Matrix4x4 T = P * V * mesh.model_matrix;
+            Vector4 h0 = T * Vector4{p0.x, p0.y, p0.z, 1.0};
+            Vector4 h1 = T * Vector4{p1.x, p1.y, p1.z, 1.0};
+            Vector4 h2 = T * Vector4{p2.x, p2.y, p2.z, 1.0};
+
+            Vector3 p0_prime = Vector3{h0.x, h0.y, -1.0};
+            Vector3 p1_prime = Vector3{h1.x, h1.y, -1.0};
+            Vector3 p2_prime = Vector3{h2.x, h2.y, -1.0};
+
+            // Calculate screen space points
+            Vector2 p0_prime_2 = calcScreenProj(p0_prime, img, scene.camera.s, aspectRatio);
+            Vector2 p1_prime_2 = calcScreenProj(p1_prime, img, scene.camera.s, aspectRatio);
+            Vector2 p2_prime_2 = calcScreenProj(p2_prime, img, scene.camera.s, aspectRatio);
+
+            // Create triangle
+            std::vector<Vector2> triangle;
+            triangle.push_back(p0_prime_2);
+            triangle.push_back(p1_prime_2);
+            triangle.push_back(p2_prime_2);
+
+            double triangleArea = length(cross(p0_prime - p1_prime, p0_prime - p2_prime)) / 2.0;
+
             for (int y = 0; y < img.height; y++)
             {
                 for (int x = 0; x < img.width; x++)
                 {
                     // Get cameraProj from screenSpace coords of pixel using P^-1
 
-                    // 
-                    
+                    //
                 }
             }
         }
-        
     }
-    
 
     return img;
 }
