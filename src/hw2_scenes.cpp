@@ -318,7 +318,7 @@ Matrix4x4 parse_transformation(const json &node) {
                     (*up_it)[0], (*up_it)[1], (*up_it)[2]
                 });
             }
-            // TODO (HW2.4): construct a lookat matrix and composite with F
+
             Vector3 d = normalize(target - position);
             Vector3 r = normalize(cross(d, up));
             Vector3 u_prime = cross(r, d);

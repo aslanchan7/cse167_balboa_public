@@ -428,42 +428,66 @@ Image3 hw_2_4(const std::vector<std::string> &params)
                scene.camera.resolution.y);
 
     auto aspectRatio = (double)img.width / (double)img.height;
-
     Matrix4x4 P = Matrix4x4::identity();
     P(2, 2) = 0;
     P(3, 2) = -1;
     P(3, 3) = 0;
-    P(3, 2) = 1;
+    P(2, 3) = 1;
 
     Matrix4x4 V = inverse(scene.camera.cam_to_world);
+    
+    Image3 largeImg(4 * img.width, 4 * img.height);
+
+    Image1 z_buffer(4 * img.width, 4 * img.height);
+    for (int i = 0; i < z_buffer.width; i++)
+    {
+        for (int j = 0; j < z_buffer.height; j++)
+        {
+            z_buffer(i, j) = -INFINITY;
+            largeImg(i, j) = scene.background;
+        }
+    }
+
+    // Image1 z_buffer(img.width, img.height);
+    // for (int i = 0; i < z_buffer.width; i++)
+    // {
+    //     for (int j = 0; j < z_buffer.height; j++)
+    //     {
+    //         z_buffer(i, j) = -INFINITY;
+    //     }
+        
+    // }
+    
 
     // foreach mesh
     for (int m = 0; m < (int)scene.meshes.size(); m++)
     {
         TriangleMesh mesh = scene.meshes[m];
+        // Matrix4x4 T = P * V * mesh.model_matrix;
+        Matrix4x4 T = V * mesh.model_matrix;
 
         // foreach triangle
-        for (int i = 0; i < scene.meshes[m].faces.size(); i++)
+        for (int i = 0; i < (int)scene.meshes[m].faces.size(); i++)
         {
             // Get vertex colors
             Vector3 c0 = mesh.vertex_colors[mesh.faces[i][0]];
             Vector3 c1 = mesh.vertex_colors[mesh.faces[i][1]];
             Vector3 c2 = mesh.vertex_colors[mesh.faces[i][2]];
 
-            // Get points of triangle
+            // Get points of triangle (in object space)
             Vector3 p0 = mesh.vertices[mesh.faces[i][0]];
             Vector3 p1 = mesh.vertices[mesh.faces[i][1]];
             Vector3 p2 = mesh.vertices[mesh.faces[i][2]];
 
             // Multiply by M then V then P to get cameraProj space
-            Matrix4x4 T = P * V * mesh.model_matrix;
             Vector4 h0 = T * Vector4{p0.x, p0.y, p0.z, 1.0};
             Vector4 h1 = T * Vector4{p1.x, p1.y, p1.z, 1.0};
             Vector4 h2 = T * Vector4{p2.x, p2.y, p2.z, 1.0};
 
-            Vector3 p0_prime = Vector3{h0.x, h0.y, -1.0};
-            Vector3 p1_prime = Vector3{h1.x, h1.y, -1.0};
-            Vector3 p2_prime = Vector3{h2.x, h2.y, -1.0};
+            // Points of the triangle (in projected camera space)
+            Vector3 p0_prime = calcCameraProj(Vector3{h0.x, h0.y, h0.z});
+            Vector3 p1_prime = calcCameraProj(Vector3{h1.x, h1.y, h1.z});
+            Vector3 p2_prime = calcCameraProj(Vector3{h2.x, h2.y, h2.z});
 
             // Calculate screen space points
             Vector2 p0_prime_2 = calcScreenProj(p0_prime, img, scene.camera.s, aspectRatio);
@@ -482,11 +506,80 @@ Image3 hw_2_4(const std::vector<std::string> &params)
             {
                 for (int x = 0; x < img.width; x++)
                 {
-                    // Get cameraProj from screenSpace coords of pixel using P^-1
+                    int b = 0;
+                    for (Real k = 0.125; k < 1; k += 0.25)
+                    {
+                        int a = 0;
+                        for (Real j = 0.125; j < 1; j += 0.25)
+                        {
+                            Vector2 subpoint = Vector2{x + j, img.height - y + k};
 
-                    //
+                            if (pointInShape(subpoint, triangle))
+                            {
+                                Vector3 cameraProj = screenToCameraProj(subpoint, img, scene.camera.s, aspectRatio);
+
+                                double b0_prime = calcBaryCoef({cameraProj, p1_prime, p2_prime}, triangleArea);
+                                double b1_prime = calcBaryCoef({p0_prime, cameraProj, p2_prime}, triangleArea);
+                                double b2_prime = calcBaryCoef({p0_prime, p1_prime, cameraProj}, triangleArea);
+
+                                auto denominator = (b0_prime / h0.z) + (b1_prime / h1.z) + (b2_prime / h2.z);
+                                double b0 = (b0_prime / h0.z) / denominator;
+                                double b1 = (b1_prime / h1.z) / denominator;
+                                double b2 = (b2_prime / h2.z) / denominator;
+
+                                double depth = (b0 * h0.z) + (b1 * h1.z) + (b2 * h2.z);
+
+                                if (depth > z_buffer((4 * x) + a, (4 * y) + b))
+                                {
+                                    z_buffer((4 * x) + a, (4 * y) + b) = depth;
+                                    Vector3 color = (b0 * c0) + (b1 * c1) + (b2 * c2);
+                                    largeImg((4 * x) + a, (4 * y) + b) = color;
+                                }
+                            }
+
+                            a++;
+                        }
+
+                        b++;
+                    }
+
+
+                    // Vector2 q = Vector2{x + 0.5, img.height - y + 0.5};
+
+                    // if (pointInShape(q, triangle))
+                    // {
+                    //     Vector3 cameraProj = screenToCameraProj(q, img, scene.camera.s, aspectRatio);
+
+                    //     double b0_prime = calcBaryCoef({cameraProj, p1_prime, p2_prime}, triangleArea);
+                    //     double b1_prime = calcBaryCoef({p0_prime, cameraProj, p2_prime}, triangleArea);
+                    //     double b2_prime = calcBaryCoef({p0_prime, p1_prime, cameraProj}, triangleArea);
+
+                    //     auto denominator = (b0_prime / h0.z) + (b1_prime / h1.z) + (b2_prime / h2.z);
+                    //     double b0 = (b0_prime / h0.z) / denominator;
+                    //     double b1 = (b1_prime / h1.z) / denominator;
+                    //     double b2 = (b2_prime / h2.z) / denominator;
+
+                    //     double depth = (b0 * h0.z) + (b1 * h1.z) + (b2 * h2.z);
+
+                    //     if (depth > z_buffer(x, y))
+                    //     {
+                    //         z_buffer(x, y) = depth;
+                    //         Vector3 color = (b0 * c0) + (b1 * c1) + (b2 * c2);
+                    //         img(x, y) = color;
+                    //     }
+                    // }
                 }
             }
+        }
+    }
+
+
+    for (int j = 0; j < largeImg.height; j += 4)
+    {
+        for (int i = 0; i < largeImg.width; i += 4)
+        {
+            Vector3 addedColor = largeImg(i, j) + largeImg(i + 1, j) + largeImg(i + 2, j) + largeImg(i + 3, j) + largeImg(i, j + 1) + largeImg(i + 1, j + 1) + largeImg(i + 2, j + 1) + largeImg(i + 3, j + 1) + largeImg(i, j + 2) + largeImg(i + 1, j + 2) + largeImg(i + 2, j + 2) + largeImg(i + 3, j + 2) + largeImg(i, j + 3) + largeImg(i + 1, j + 3) + largeImg(i + 2, j + 3) + largeImg(i + 3, j + 3);
+            img(i / 4, j / 4) = addedColor / Real(16);
         }
     }
 
