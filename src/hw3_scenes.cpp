@@ -183,21 +183,60 @@ Matrix4x4 parse_transformation(const json &node) {
             Vector3 scale = Vector3{
                 (*scale_it)[0], (*scale_it)[1], (*scale_it)[2]
             };
-            // TODO (HW3.3): construct a scale matrix and composite with F
+
+            Matrix4x4 G = Matrix4x4::identity();
+            G(0, 0) = F(0, 0) * scale.x;
+            G(1, 1) = F(1, 1) * scale.y;
+            G(2, 2) = F(2, 2) * scale.z;
+
+            F = G;
+
             UNUSED(scale); // silence warning, feel free to remove it
         } else if (auto rotate_it = it->find("rotate"); rotate_it != it->end()) {
             Real angle = (*rotate_it)[0];
             Vector3 axis = normalize(Vector3{
                 (*rotate_it)[1], (*rotate_it)[2], (*rotate_it)[3]
             });
-            // TODO (HW3.3): construct a rotation matrix and composite with F
+
+            Matrix4x4 G = Matrix4x4::identity();
+            auto angleInRad = angle * M_PI / (double)180;
+            auto sinAngle = sin(angleInRad);
+            auto cosAngle = cos(angleInRad);
+
+            auto xx = axis.x * axis.x;
+            auto xy = axis.x * axis.y;
+            auto xz = axis.x * axis.z;
+            auto yy = axis.y * axis.y;
+            auto yz = axis.y * axis.z;
+            auto zz = axis.z * axis.z;
+
+            G(0, 0) = (xx) + ((1 - xx) * cosAngle);
+            G(1, 0) = (xy) * (1 - cosAngle) + (axis.z * sinAngle);
+            G(2, 0) = (xz) * (1 - cosAngle) - (axis.y * sinAngle);
+
+            G(0, 1) = (xy) * (1 - cosAngle) - (axis.z * sinAngle);
+            G(1, 1) = (yy) + ((1 - yy) * cosAngle);
+            G(2, 1) = (yz) * (1 - cosAngle) + (axis.x * sinAngle);
+
+            G(0, 2) = (xz) * (1 - cosAngle) + (axis.y * sinAngle);
+            G(1, 2) = (yz) * (1 - cosAngle) - (axis.x * sinAngle);
+            G(2, 2) = (zz) + ((1 - zz) * cosAngle);
+
+            Matrix4x4 H = F;
+
+            F = G * H;
+
             UNUSED(angle); // silence warning, feel free to remove it
             UNUSED(axis); // silence warning, feel free to remove it
         } else if (auto translate_it = it->find("translate"); translate_it != it->end()) {
             Vector3 translate = Vector3{
                 (*translate_it)[0], (*translate_it)[1], (*translate_it)[2]
             };
-            // TODO (HW3.3): construct a translation matrix and composite with F
+
+            F(0, 3) += translate.x;
+            F(1, 3) += translate.y;
+            F(2, 3) += translate.z;
+
             UNUSED(translate); // silence warning, feel free to remove it
         } else if (auto lookat_it = it->find("lookat"); lookat_it != it->end()) {
             Vector3 position{0, 0, 0};
@@ -221,7 +260,29 @@ Matrix4x4 parse_transformation(const json &node) {
                     (*up_it)[0], (*up_it)[1], (*up_it)[2]
                 });
             }
-            // TODO (HW3.3): construct a lookat matrix and composite with F
+
+            Vector3 d = normalize(target - position);
+            Vector3 r = normalize(cross(d, up));
+            Vector3 u_prime = cross(r, d);
+
+            Matrix4x4 G = Matrix4x4::identity();
+            G(0,0) = r.x;
+            G(1,0) = r.y;
+            G(2,0) = r.z;
+
+            G(0,1) = u_prime.x;
+            G(1,1) = u_prime.y;
+            G(2,1) = u_prime.z;
+
+            G(0,2) = -d.x;
+            G(1,2) = -d.y;
+            G(2,2) = -d.z;
+
+            G(0,3) = position.x;
+            G(1,3) = position.y;
+            G(2,3) = position.z;
+
+            F = G * F;
         }
     }
     return F;
